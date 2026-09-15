@@ -1,0 +1,1293 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Roberto Mangiurea — Desarrollador DAM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /* ===== RESET & BASE ===== */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #000;
+    color: #fff;
+    font-family: 'Inter', sans-serif;
+    overflow: hidden;
+    cursor: none;
+  }
+  ::selection { background: #fff; color: #000; }
+
+  /* ===== CANVAS 3D (fondo global, escena única persistente) ===== */
+  #webgl-canvas {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  /* ===== CURSOR PERSONALIZADO (con retícula de escaneo) ===== */
+  #cursor-dot, #cursor-ring {
+    position: fixed;
+    top: 0; left: 0;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+  }
+  #cursor-dot {
+    width: 6px; height: 6px;
+    background: #fff;
+  }
+  #cursor-ring {
+    width: 34px; height: 34px;
+    border: 1px solid rgba(255,255,255,0.35);
+    transition: width .25s cubic-bezier(.22,1,.36,1), height .25s cubic-bezier(.22,1,.36,1), border-color .25s ease;
+  }
+  #cursor-ring::before, #cursor-ring::after {
+    content: '';
+    position: absolute;
+    background: rgba(255,255,255,0.35);
+  }
+  #cursor-ring::before { top: 50%; left: -6px; width: 6px; height: 1px; }
+  #cursor-ring::after { top: -6px; left: 50%; width: 1px; height: 6px; }
+  #cursor-ring.hover {
+    width: 54px; height: 54px;
+    border-color: rgba(255,255,255,0.9);
+  }
+
+  /* ===== SCROLL CONTAINER ===== */
+  #scroll-container {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    height: 100vh;
+    overflow-y: scroll;
+    scroll-snap-type: y proximity;
+    scroll-behavior: smooth;
+  }
+  #scroll-container::-webkit-scrollbar { display: none; }
+
+  section {
+    position: relative;
+    width: 100%;
+    height: 100vh;
+    scroll-snap-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 8vw;
+  }
+
+  .reveal-content { will-change: opacity, transform; }
+
+  /* ===== NAVBAR ===== */
+  #navbar {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%;
+    height: 90px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 4vw;
+    z-index: 100;
+    pointer-events: none;
+  }
+  #navbar .logo {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    letter-spacing: 0.15em;
+    color: #fff;
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+  #hud-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    color: #666;
+    text-transform: uppercase;
+  }
+  #hud-status .hud-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 8px rgba(255,255,255,0.8);
+    animation: hudPulse 2.2s ease-in-out infinite;
+  }
+  @keyframes hudPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+  #nav-dots {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    pointer-events: auto;
+  }
+  .nav-dot-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    justify-content: flex-end;
+  }
+  .nav-dot-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: #888;
+    opacity: 0;
+    transform: translateX(6px);
+    transition: opacity .3s cubic-bezier(.22,1,.36,1), transform .3s cubic-bezier(.22,1,.36,1);
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .nav-dot-wrap:hover .nav-dot-label { opacity: 1; transform: translateX(0); }
+  .nav-dot {
+    width: 6px; height: 6px;
+    background: #333;
+    transition: background .35s cubic-bezier(.22,1,.36,1), transform .35s cubic-bezier(.22,1,.36,1), box-shadow .35s ease;
+  }
+  .nav-dot-wrap.active .nav-dot {
+    background: #fff;
+    transform: scale(1.6);
+    box-shadow: 0 0 12px rgba(255,255,255,0.7);
+  }
+
+  /* ===== SECTION INDICATOR ===== */
+  #section-indicator {
+    position: fixed;
+    bottom: 40px;
+    right: 4vw;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    color: #888;
+    z-index: 100;
+    pointer-events: none;
+  }
+  #section-indicator .current { color: #fff; }
+
+  /* ===== HUD SECTION TAG ===== */
+  .section-tag {
+    position: absolute;
+    top: 110px;
+    left: 4vw;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.15em;
+    color: #666;
+    text-transform: uppercase;
+    z-index: 5;
+  }
+  .section-tag::before {
+    content: '';
+    width: 16px; height: 1px;
+    background: #555;
+  }
+
+  /* ===== HERO — editorial descentrado ===== */
+  #hero { align-items: stretch; justify-content: stretch; padding: 0; }
+  .hero-content { position: relative; width: 100%; height: 100%; }
+  .hero-role {
+    position: absolute;
+    top: 110px; left: 6vw;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    color: #888;
+    text-transform: uppercase;
+    max-width: 240px;
+    line-height: 1.7;
+  }
+  #hero h1 {
+    position: absolute;
+    left: 6vw; bottom: 100px;
+    font-size: clamp(52px, 10vw, 150px);
+    font-weight: 800;
+    line-height: 0.92;
+    letter-spacing: -0.02em;
+    text-align: left;
+  }
+  #hero h1 .hero-line { display: block; }
+  .hero-stack {
+    position: absolute;
+    bottom: 100px; right: 6vw;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    color: #666;
+  }
+  .hero-stack-label {
+    color: #444;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  /* ===== ABOUT ===== */
+  #about { justify-content: space-between; gap: 6vw; }
+  .about-text { flex: 1; max-width: 520px; }
+  .about-heading-row {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 28px;
+  }
+  .about-avatar {
+    display: block;
+    flex-shrink: 0;
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    border: 1px solid #2a2a2a;
+    background: #0a0a0a;
+    overflow: hidden;
+    filter: grayscale(1) contrast(1.05);
+  }
+  .about-avatar svg { display: block; width: 100%; height: 100%; }
+  .about-avatar .blob-eyes-blink {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: avatarBlink 2.6s ease-in-out infinite;
+  }
+  @keyframes avatarFloat {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    50% { transform: translateY(-10px) rotate(-4deg); }
+  }
+  @keyframes avatarBlink {
+    0%, 85%, 100% { transform: scaleY(1); }
+    90% { transform: scaleY(0.1); }
+    93% { transform: scaleY(1); }
+  }
+  .about-text h2 {
+    font-size: clamp(36px, 4vw, 56px);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .about-text p {
+    font-size: 17px;
+    line-height: 1.8;
+    color: #aaa;
+    font-weight: 300;
+    margin-bottom: 18px;
+  }
+  .about-text p strong { color: #fff; font-weight: 500; }
+  .about-visual { flex: 1; height: 60vh; position: relative; }
+
+  /* ===== SKILLS ===== */
+  #skills { flex-direction: column; align-items: flex-start; }
+  #skills-inner { width: 100%; max-width: 900px; margin: 0 auto; }
+  #skills h2 {
+    font-size: clamp(36px, 4vw, 56px);
+    font-weight: 700;
+    margin-bottom: 60px;
+    letter-spacing: -0.01em;
+  }
+  .skills-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 50px 70px; }
+  .skill-category h3 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: #666;
+    margin-bottom: 24px;
+  }
+  .skill-item { margin-bottom: 20px; }
+  .skill-item-top {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 14px;
+    color: #ddd;
+    font-weight: 400;
+  }
+  .skill-item-top span.pct {
+    font-family: 'JetBrains Mono', monospace;
+    color: #666;
+    font-size: 12px;
+  }
+  .skill-bar-track {
+    width: 100%;
+    height: 2px;
+    background: #1a1a1a;
+    position: relative;
+    overflow: hidden;
+  }
+  .skill-bar-fill {
+    position: absolute;
+    top: 0; left: 0;
+    height: 100%;
+    width: 0%;
+    background: #fff;
+    box-shadow: 0 0 8px rgba(255,255,255,0.6);
+  }
+
+  /* ===== PROJECTS ===== */
+  #projects { flex-direction: column; }
+  #projects-inner { width: 100%; max-width: 1100px; margin: 0 auto; }
+  #projects h2 {
+    font-size: clamp(36px, 4vw, 56px);
+    font-weight: 700;
+    margin-bottom: 50px;
+    letter-spacing: -0.01em;
+  }
+  .projects-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .project-card {
+    background: rgba(10,10,10,0.7);
+    backdrop-filter: blur(4px);
+    border: 1px solid #1e1e1e;
+    padding: 30px;
+    cursor: pointer;
+    position: relative;
+  }
+  .project-index {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: #555;
+    letter-spacing: 0.1em;
+  }
+  .project-card h3 { font-size: 22px; font-weight: 600; margin: 14px 0 10px; }
+  .project-stack {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: #777;
+    letter-spacing: 0.05em;
+    margin-bottom: 14px;
+  }
+  .project-desc { font-size: 14px; color: #999; line-height: 1.6; font-weight: 300; }
+
+  /* ===== MODAL ===== */
+  #modal-overlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.85);
+    backdrop-filter: blur(6px);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .4s cubic-bezier(.22,1,.36,1);
+  }
+  #modal-overlay.open { opacity: 1; pointer-events: auto; }
+  #modal-box {
+    background: #0a0a0a;
+    border: 1px solid #2a2a2a;
+    max-width: 560px;
+    width: 90%;
+    padding: 50px;
+    position: relative;
+  }
+  #modal-close {
+    position: absolute;
+    top: 24px; right: 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 20px;
+    color: #888;
+    cursor: pointer;
+    transition: color .3s ease, transform .3s ease;
+  }
+  #modal-close:hover { color: #fff; transform: rotate(90deg); }
+  #modal-box .project-index { display: block; margin-bottom: 16px; }
+  #modal-box h3 { font-size: 30px; margin-bottom: 14px; }
+  #modal-box .project-stack { margin-bottom: 22px; font-size: 12px; }
+  #modal-box .project-desc { font-size: 15px; color: #bbb; }
+  .modal-links { display: flex; gap: 24px; margin-top: 26px; }
+  .modal-links a {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    color: #fff;
+    text-decoration: none;
+    border-bottom: 1px solid #333;
+    padding-bottom: 3px;
+    transition: border-color .3s ease, opacity .3s ease;
+  }
+  .modal-links a:hover { border-color: #fff; }
+
+  /* ===== CONTACT ===== */
+  #contact { justify-content: space-between; gap: 6vw; }
+  .contact-left { flex: 1; max-width: 480px; }
+  .contact-left h2 {
+    font-size: clamp(36px, 4vw, 56px);
+    font-weight: 700;
+    margin-bottom: 24px;
+    letter-spacing: -0.01em;
+  }
+  .contact-left p {
+    color: #999;
+    font-size: 15px;
+    line-height: 1.7;
+    font-weight: 300;
+    margin-bottom: 36px;
+  }
+  #contact-form { display: flex; flex-direction: column; gap: 22px; }
+  .form-group { position: relative; }
+  .form-group input, .form-group textarea {
+    width: 100%;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid #2a2a2a;
+    color: #fff;
+    font-family: 'Inter', sans-serif;
+    font-size: 15px;
+    padding: 10px 0;
+    outline: none;
+    transition: border-color .3s ease;
+    resize: none;
+  }
+  .form-group input::placeholder, .form-group textarea::placeholder { color: #555; }
+  .form-group input:focus, .form-group textarea:focus { border-color: #fff; }
+  #contact-form button {
+    margin-top: 12px;
+    align-self: flex-start;
+    background: transparent;
+    border: 1px solid #fff;
+    color: #fff;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    padding: 14px 32px;
+    cursor: pointer;
+    transition: background .35s cubic-bezier(.22,1,.36,1), color .35s cubic-bezier(.22,1,.36,1), box-shadow .35s ease;
+  }
+  #contact-form button:hover { background: #fff; color: #000; box-shadow: 0 0 24px rgba(255,255,255,0.4); }
+  #form-msg {
+    margin-top: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: #888;
+    height: 16px;
+  }
+  .contact-right { flex: 1; height: 55vh; position: relative; }
+  .social-links { display: flex; gap: 28px; margin-top: 6px; }
+  .social-links a {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    color: #888;
+    text-decoration: none;
+    position: relative;
+    padding-bottom: 4px;
+    transition: color .3s ease;
+  }
+  .social-links a::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0;
+    width: 0%; height: 1px;
+    background: #fff;
+    transition: width .35s cubic-bezier(.22,1,.36,1);
+  }
+  .social-links a:hover { color: #fff; }
+  .social-links a:hover::after { width: 100%; }
+
+  footer {
+    position: absolute;
+    bottom: 40px;
+    left: 4vw;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: #555;
+    letter-spacing: 0.05em;
+  }
+
+  @media (max-width: 1280px) {
+    .skills-grid { grid-template-columns: 1fr; }
+    .projects-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- ===== CURSOR ===== -->
+  <div id="cursor-dot"></div>
+  <div id="cursor-ring"></div>
+
+  <!-- ===== THREE.JS CANVAS ===== -->
+  <canvas id="webgl-canvas"></canvas>
+
+  <!-- ===== NAVBAR ===== -->
+  <nav id="navbar">
+    <div class="logo">RM_</div>
+    <div id="hud-status"><span class="hud-dot"></span>Sistema en línea</div>
+    <div id="nav-dots">
+      <div class="nav-dot-wrap" data-index="0"><span class="nav-dot-label">Hero</span><div class="nav-dot"></div></div>
+      <div class="nav-dot-wrap" data-index="1"><span class="nav-dot-label">About</span><div class="nav-dot"></div></div>
+      <div class="nav-dot-wrap" data-index="2"><span class="nav-dot-label">Skills</span><div class="nav-dot"></div></div>
+      <div class="nav-dot-wrap" data-index="3"><span class="nav-dot-label">Projects</span><div class="nav-dot"></div></div>
+      <div class="nav-dot-wrap" data-index="4"><span class="nav-dot-label">Contact</span><div class="nav-dot"></div></div>
+    </div>
+  </nav>
+
+  <!-- ===== SECTION INDICATOR ===== -->
+  <div id="section-indicator"><span class="current">01</span> / 05</div>
+
+  <!-- ===== SCROLL CONTAINER ===== -->
+  <div id="scroll-container">
+
+    <!-- HERO -->
+    <section id="hero" data-index="0">
+      <div class="reveal-content hero-content">
+        <div class="hero-role">Desarrollador de<br>Aplicaciones<br>Multiplataforma</div>
+        <h1><span class="hero-line">ROBERTO</span><span class="hero-line">MANGIUREA</span></h1>
+        <div class="hero-stack">
+          <span class="hero-stack-label">Stack</span>
+          <span>Kotlin</span><span>Java</span><span>React</span><span>Node.js</span><span>SQL</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ABOUT -->
+    <section id="about" data-index="1">
+      <div class="section-tag">01 / About</div>
+      <div class="about-text reveal-content">
+        <div class="about-heading-row">
+          <h2>Sobre mí</h2>
+          <div class="about-avatar" role="img" aria-label="Avatar de Roberto">
+            <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+              <g class="blob-body" fill="#ffc6a8"><path d="M79.47 46.72C82.23 73.69 81.95 74.02 54.09 76.87C26.23 79.72 25.89 79.45 23.13 52.49C20.37 25.53 20.65 25.19 48.51 22.34C76.37 19.49 76.71 19.76 79.47 46.72Z"/></g>
+              <g class="blob-eyes-gaze">
+                <g class="blob-eyes-blink" fill="#170d08">
+                  <path d="M46.14 45.28C45.33 49.94 45.07 50.28 42.67 49.86C40.27 49.44 40.14 49.03 40.95 44.38C41.76 39.72 42.02 39.39 44.42 39.8C46.82 40.22 46.95 40.63 46.14 45.28Z"/>
+                  <path d="M62.5 44.11C62.01 47.85 61.79 48.12 59.57 47.83C57.34 47.53 57.2 47.21 57.7 43.47C58.2 39.73 58.42 39.46 60.64 39.76C62.87 40.05 63 40.37 62.5 44.11Z"/>
+                </g>
+              </g>
+            </svg>
+          </div>
+        </div>
+        <p>Soy <strong>Roberto</strong>, desarrollador de <strong>Aplicaciones Multiplataforma (DAM)</strong> centrado en construir productos completos: desde la app nativa en <strong>Kotlin</strong> hasta el backend y el panel de administración.</p>
+        <p>Me muevo cómodo entre <strong>Java</strong>, <strong>Kotlin</strong> y <strong>Android SDK</strong> para el desarrollo móvil, y entre <strong>JavaScript</strong>, <strong>React</strong> y <strong>SQL</strong> para construir la capa web y de datos.</p>
+        <p>Firebase y Git forman parte de mi flujo diario: control de versiones disciplinado y servicios en la nube para autenticación, base de datos en tiempo real y notificaciones push.</p>
+      </div>
+      <div class="about-visual"></div>
+    </section>
+
+    <!-- SKILLS -->
+    <section id="skills" data-index="2">
+      <div class="section-tag">02 / Skills</div>
+      <div id="skills-inner" class="reveal-content">
+        <h2>Habilidades</h2>
+        <div class="skills-grid">
+          <div class="skill-category">
+            <h3>Mobile / Backend</h3>
+            <div class="skill-item" data-pct="90"><div class="skill-item-top"><span>Kotlin</span><span class="pct">90%</span></div><div class="skill-bar-track"><div class="skill-bar-fill"></div></div></div>
+            <div class="skill-item" data-pct="85"><div class="skill-item-top"><span>Java</span><span class="pct">85%</span></div><div class="skill-bar-track"><div class="skill-bar-fill"></div></div></div>
+            <div class="skill-item" data-pct="80"><div class="skill-item-top"><span>Android SDK</span><span class="pct">80%</span></div><div class="skill-bar-track"><div class="skill-bar-fill"></div></div></div>
+            <div class="skill-item" data-pct="75"><div class="skill-item-top"><span>SQL</span><span class="pct">75%</span></div><div class="skill-bar-track"><div class="skill-bar-fill"></div></div></div>
+          </div>
+          <div class="skill-category">
+            <h3>Web / Tools</h3>
+            <div class="skill-item" data-pct="82"><div class="skill-item-top"><span>JavaScript</span><span class="pct">82%</span></div><div class="skill-bar-track"><div class="skill-bar-fill"></div></div></div>
+            <div class="skill-item" data-pct="78"><div class="skill-item-top"><span>React</span><span class="pct">78%</span></div><div class="skill-bar-track"><div class="skill-bar-fill"></div></div></div>
+            <div class="skill-item" data-pct="80"><div class="skill-item-top"><span>HTML / CSS</span><span class="pct">80%</span></div><div class="skill-bar-track"><div class="skill-bar-fill"></div></div></div>
+            <div class="skill-item" data-pct="85"><div class="skill-item-top"><span>Firebase / Git</span><span class="pct">85%</span></div><div class="skill-bar-track"><div class="skill-bar-fill"></div></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PROJECTS -->
+    <section id="projects" data-index="3">
+      <div class="section-tag">03 / Projects</div>
+      <div id="projects-inner" class="reveal-content">
+        <h2>Proyectos</h2>
+        <div class="projects-grid">
+          <div class="project-card" data-project="0">
+            <span class="project-index">01</span>
+            <h3>CyberShield — Plataforma de Ciberseguridad</h3>
+            <div class="project-stack">React · Node.js · PostgreSQL · TypeScript</div>
+            <p class="project-desc">Gestor de contraseñas, simulador de phishing y escáner de red en una sola plataforma.</p>
+          </div>
+          <div class="project-card" data-project="1">
+            <span class="project-index">02</span>
+            <h3>API REST — Backend Java</h3>
+            <div class="project-stack">Java · Spring Boot · MySQL · JWT</div>
+            <p class="project-desc">API con autenticación, Swagger docs, desplegada en Railway.</p>
+          </div>
+          <div class="project-card" data-project="2">
+            <span class="project-index">03</span>
+            <h3>Dashboard Web</h3>
+            <div class="project-stack">React · JavaScript · Chart.js</div>
+            <p class="project-desc">Panel admin con gráficas en tiempo real consumiendo API propia.</p>
+          </div>
+          <div class="project-card" data-project="3">
+            <span class="project-index">04</span>
+            <h3>Proyecto Final DAM</h3>
+            <div class="project-stack">Kotlin · Java · SQL · HTML/CSS</div>
+            <p class="project-desc">App móvil + backend + panel web para gestión de negocio local.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CONTACT -->
+    <section id="contact" data-index="4">
+      <div class="section-tag">04 / Contact</div>
+      <div class="contact-left reveal-content">
+        <h2>Hablemos</h2>
+        <p>¿Tienes un proyecto en mente o una oportunidad? Escríbeme y te responderé lo antes posible.</p>
+        <form id="contact-form">
+          <div class="form-group"><input type="text" name="name" placeholder="Nombre" required></div>
+          <div class="form-group"><input type="email" name="email" placeholder="Email" required></div>
+          <div class="form-group"><textarea name="message" rows="3" placeholder="Mensaje" required></textarea></div>
+          <button type="submit">Enviar mensaje</button>
+          <div id="form-msg"></div>
+        </form>
+        <div class="social-links" style="margin-top:34px;">
+          <a href="https://github.com/wqryx" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://www.linkedin.com/in/roberto-cristian-mangiurea/" target="_blank" rel="noopener">LinkedIn</a>
+          <a href="mailto:robertocrma04@gmail.com">Email</a>
+        </div>
+      </div>
+      <div class="contact-right"></div>
+      <footer>© 2026 Roberto Mangiurea — Built with Three.js</footer>
+    </section>
+
+  </div>
+
+  <!-- ===== MODAL ===== -->
+  <div id="modal-overlay">
+    <div id="modal-box">
+      <div id="modal-close">✕</div>
+      <span class="project-index" id="modal-index"></span>
+      <h3 id="modal-title"></h3>
+      <div class="project-stack" id="modal-stack"></div>
+      <p class="project-desc" id="modal-desc"></p>
+      <div class="modal-links" id="modal-links"></div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script>
+  /* =========================================================
+     DATA
+  ========================================================= */
+  const PROJECTS = [
+    { title: 'CyberShield — Plataforma de Ciberseguridad', stack: 'React · Node.js · Express · PostgreSQL · Drizzle ORM · TypeScript', desc: 'Plataforma integral de ciberseguridad personal: gestor de contraseñas con generación segura, verificación de filtraciones y análisis de fortaleza; simulador de phishing interactivo con casos realistas; y escáner de red doméstica con detección de dispositivos y vulnerabilidades. Frontend en React con Tailwind CSS y shadcn/ui, backend con Express y Drizzle ORM sobre PostgreSQL (Neon Serverless).', repo: 'https://github.com/wqryx/CyberShield', demo: 'https://cybershield-7w4x.onrender.com' },
+    { title: 'API REST — Backend Java', stack: 'Java · Spring Boot · MySQL · JWT', desc: 'API RESTful construida con Spring Boot, autenticación mediante JWT, documentación interactiva con Swagger y despliegue continuo en Railway. Base de datos relacional en MySQL.' },
+    { title: 'Dashboard Web', stack: 'React · JavaScript · Chart.js', desc: 'Panel de administración construido en React que consume una API propia y renderiza gráficas en tiempo real con Chart.js para el seguimiento de métricas de negocio.' },
+    { title: 'Proyecto Final DAM', stack: 'Kotlin · Java · SQL · HTML/CSS', desc: 'Proyecto integrador del ciclo DAM: aplicación móvil en Kotlin, backend en Java con base de datos SQL, y panel web en HTML/CSS para la gestión completa de un negocio local.' }
+  ];
+
+  /* =========================================================
+     GSAP — HELPERS DE TEXTO
+  ========================================================= */
+  function splitChars(el) {
+    if (!el || el.dataset.split) return;
+    el.dataset.split = 'true';
+    const text = el.textContent;
+    el.textContent = '';
+    text.split('').forEach(ch => {
+      const span = document.createElement('span');
+      span.textContent = ch === ' ' ? ' ' : ch;
+      span.style.display = 'inline-block';
+      el.appendChild(span);
+    });
+  }
+  function revealHeading(el) {
+    if (!el || el.dataset.revealed) return;
+    el.dataset.revealed = 'true';
+    splitChars(el);
+    gsap.from(el.children, { opacity: 0, y: 34, duration: 0.7, ease: 'power3.out', stagger: 0.025 });
+  }
+
+  /* =========================================================
+     GSAP — ENTRADA DEL HERO
+  ========================================================= */
+  document.querySelectorAll('#hero h1 .hero-line').forEach(splitChars);
+  gsap.timeline({ delay: 0.2 })
+    .from('.hero-content .hero-role', { opacity: 0, y: 20, duration: 0.7, ease: 'power3.out' })
+    .from('#hero h1 .hero-line span', { opacity: 0, y: 55, rotate: 6, duration: 0.9, ease: 'power4.out', stagger: 0.03 }, '-=0.35')
+    .from('.hero-content .hero-stack span', { opacity: 0, y: 12, duration: 0.5, ease: 'power3.out', stagger: 0.06 }, '-=0.5');
+
+  /* =========================================================
+     CURSOR PERSONALIZADO
+  ========================================================= */
+  const cursorDot = document.getElementById('cursor-dot');
+  const cursorRing = document.getElementById('cursor-ring');
+  let mouseX = window.innerWidth / 2, mouseY = window.innerHeight / 2;
+  let ringX = mouseX, ringY = mouseY;
+
+  window.addEventListener('mousemove', (e) => {
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+    cursorDot.style.left = mouseX + 'px';
+    cursorDot.style.top = mouseY + 'px';
+  });
+  function animateCursorRing() {
+    ringX += (mouseX - ringX) * 0.15;
+    ringY += (mouseY - ringY) * 0.15;
+    cursorRing.style.left = ringX + 'px';
+    cursorRing.style.top = ringY + 'px';
+    requestAnimationFrame(animateCursorRing);
+  }
+  animateCursorRing();
+
+  document.querySelectorAll('a, button, .project-card, .nav-dot-wrap, input, textarea, #modal-close').forEach(el => {
+    el.addEventListener('mouseenter', () => cursorRing.classList.add('hover'));
+    el.addEventListener('mouseleave', () => cursorRing.classList.remove('hover'));
+  });
+
+  /* =========================================================
+     AVATAR — LOS OJOS SIGUEN AL RATÓN
+  ========================================================= */
+  const avatarEl = document.querySelector('.about-avatar');
+  const avatarEyesGaze = document.querySelector('.blob-eyes-gaze');
+  let gazeX = 0, gazeY = 0, gazeTargetX = 0, gazeTargetY = 0;
+
+  window.addEventListener('mousemove', (e) => {
+    if (!avatarEl) return;
+    const rect = avatarEl.getBoundingClientRect();
+    if (rect.width === 0) return;
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = e.clientX - cx;
+    const dy = e.clientY - cy;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+    const maxOffset = 6.5;
+    gazeTargetX = (dx / dist) * Math.min(maxOffset, dist * 0.08);
+    gazeTargetY = (dy / dist) * Math.min(maxOffset, dist * 0.08);
+  });
+  function animateGaze() {
+    gazeX += (gazeTargetX - gazeX) * 0.25;
+    gazeY += (gazeTargetY - gazeY) * 0.25;
+    if (avatarEyesGaze) avatarEyesGaze.setAttribute('transform', `translate(${gazeX.toFixed(2)} ${gazeY.toFixed(2)})`);
+    requestAnimationFrame(animateGaze);
+  }
+  animateGaze();
+
+  /* =========================================================
+     THREE.JS SETUP
+  ========================================================= */
+  const canvas = document.getElementById('webgl-canvas');
+  const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
+  camera.position.set(0, 0, 30);
+
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+  scene.add(ambientLight);
+  const pointLight1 = new THREE.PointLight(0xffffff, 1, 100);
+  pointLight1.position.set(20, 20, 20);
+  scene.add(pointLight1);
+
+  let normMouseX = 0, normMouseY = 0;
+  window.addEventListener('mousemove', (e) => {
+    normMouseX = (e.clientX / window.innerWidth) * 2 - 1;
+    normMouseY = -(e.clientY / window.innerHeight) * 2 + 1;
+  });
+
+  // raycasting real contra el núcleo: el punto de "detección" del shader
+  // sigue con precisión el lugar exacto de la esfera que apunta el cursor
+  const coreRaycaster = new THREE.Raycaster();
+  const coreMouseNDC = new THREE.Vector2();
+  const lastCoreLocalDir = new THREE.Vector3(0, 0, 1);
+  window.addEventListener('mousemove', (e) => {
+    coreMouseNDC.x = (e.clientX / window.innerWidth) * 2 - 1;
+    coreMouseNDC.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  });
+  function updateCoreDetection() {
+    core.updateMatrixWorld(true);
+    coreRaycaster.setFromCamera(coreMouseNDC, camera);
+    const hit = coreRaycaster.intersectObject(core, false);
+    if (hit.length > 0) {
+      const localPoint = core.worldToLocal(hit[0].point.clone());
+      lastCoreLocalDir.copy(localPoint.normalize());
+    }
+    coreUniforms.uMouseDir.value.lerp(lastCoreLocalDir, 0.15);
+  }
+
+  /* =========================================================
+     NÚCLEO — objeto de shader propio (no geometría de catálogo)
+     Malla que respira con ruido simplex y "detecta" al cursor
+     con un resplandor localizado, como un radar/escáner.
+  ========================================================= */
+  const CORE_DEPTH = -20;
+
+  const coreUniforms = {
+    uTime: { value: 0 },
+    uIntensity: { value: 1 },
+    uMouseDir: { value: new THREE.Vector3(0, 0, 1) },
+    uColor: { value: new THREE.Color(0xffffff) },
+    uOpacity: { value: 0 }
+  };
+
+  const noiseGLSL = `
+    vec3 mod289(vec3 x){return x - floor(x * (1.0/289.0)) * 289.0;}
+    vec4 mod289(vec4 x){return x - floor(x * (1.0/289.0)) * 289.0;}
+    vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);}
+    vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
+    float snoise(vec3 v){
+      const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+      const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+      vec3 i  = floor(v + dot(v, C.yyy));
+      vec3 x0 = v - i + dot(i, C.xxx);
+      vec3 g = step(x0.yzx, x0.xyz);
+      vec3 l = 1.0 - g;
+      vec3 i1 = min(g.xyz, l.zxy);
+      vec3 i2 = max(g.xyz, l.zxy);
+      vec3 x1 = x0 - i1 + C.xxx;
+      vec3 x2 = x0 - i2 + C.yyy;
+      vec3 x3 = x0 - D.yyy;
+      i = mod289(i);
+      vec4 p = permute(permute(permute(
+                i.z + vec4(0.0, i1.z, i2.z, 1.0))
+              + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+              + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+      float n_ = 0.142857142857;
+      vec3 ns = n_ * D.wyz - D.xzx;
+      vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+      vec4 x_ = floor(j * ns.z);
+      vec4 y_ = floor(j - 7.0 * x_);
+      vec4 x = x_ * ns.x + ns.yyyy;
+      vec4 y = y_ * ns.x + ns.yyyy;
+      vec4 h = 1.0 - abs(x) - abs(y);
+      vec4 b0 = vec4(x.xy, y.xy);
+      vec4 b1 = vec4(x.zw, y.zw);
+      vec4 s0 = floor(b0) * 2.0 + 1.0;
+      vec4 s1 = floor(b1) * 2.0 + 1.0;
+      vec4 sh = -step(h, vec4(0.0));
+      vec4 a0 = b0.xzyw + s0.xzyw * sh.xxyy;
+      vec4 a1 = b1.xzyw + s1.xzyw * sh.zzww;
+      vec3 p0 = vec3(a0.xy, h.x);
+      vec3 p1 = vec3(a0.zw, h.y);
+      vec3 p2 = vec3(a1.xy, h.z);
+      vec3 p3 = vec3(a1.zw, h.w);
+      vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
+      p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+      vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+      m = m * m;
+      return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+    }
+  `;
+
+  const coreVertexShader = `
+    uniform float uTime;
+    uniform float uIntensity;
+    uniform vec3 uMouseDir;
+    varying vec3 vNormal;
+    varying vec3 vViewPosition;
+    varying float vNoise;
+    varying float vDetect;
+    ${noiseGLSL}
+    void main() {
+      vNormal = normalize(normalMatrix * normal);
+      float n = snoise(position * 0.35 + uTime * 0.12);
+      vNoise = n;
+      float detect = max(0.0, dot(normalize(position), normalize(uMouseDir)));
+      detect = pow(detect, 5.0);
+      vDetect = detect;
+      vec3 displaced = position + normal * (n * 0.5 * uIntensity + detect * 0.7);
+      vec4 mvPosition = modelViewMatrix * vec4(displaced, 1.0);
+      vViewPosition = -mvPosition.xyz;
+      gl_Position = projectionMatrix * mvPosition;
+    }
+  `;
+  const coreFragmentShader = `
+    uniform vec3 uColor;
+    uniform float uOpacity;
+    varying vec3 vNormal;
+    varying vec3 vViewPosition;
+    varying float vNoise;
+    varying float vDetect;
+    void main() {
+      vec3 viewDir = normalize(vViewPosition);
+      float fresnel = pow(1.0 - max(dot(normalize(vNormal), viewDir), 0.0), 2.6);
+      float glow = fresnel * 0.55 + vDetect * 1.1 + max(vNoise, 0.0) * 0.06;
+      vec3 col = uColor * glow;
+      gl_FragColor = vec4(col, clamp(glow, 0.0, 1.0) * uOpacity);
+    }
+  `;
+
+  const coreGroup = new THREE.Group();
+  coreGroup.position.set(0, 0, CORE_DEPTH);
+  scene.add(coreGroup);
+
+  const coreGeometry = new THREE.IcosahedronGeometry(6.5, 4);
+  const coreMaterial = new THREE.ShaderMaterial({
+    uniforms: coreUniforms,
+    vertexShader: coreVertexShader,
+    fragmentShader: coreFragmentShader,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide
+  });
+  const core = new THREE.Mesh(coreGeometry, coreMaterial);
+  coreGroup.add(core);
+
+  // cascarón wireframe de contención (continuidad con el lenguaje wireframe del sitio)
+  const shellGeometry = new THREE.IcosahedronGeometry(7.3, 1);
+  const shellWireGeometry = new THREE.WireframeGeometry(shellGeometry);
+  const shellMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 });
+  const shell = new THREE.LineSegments(shellWireGeometry, shellMaterial);
+  coreGroup.add(shell);
+
+  // anillo de escaneo tipo radar (pulso periódico)
+  const ringGeometry = new THREE.TorusGeometry(7.6, 0.015, 8, 80);
+  const ringMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 });
+  const scanRing = new THREE.Mesh(ringGeometry, ringMaterial);
+  scanRing.rotation.x = Math.PI / 2;
+  coreGroup.add(scanRing);
+  let scanRingBaseOpacity = 0;
+
+  /* =========================================================
+     RED DE NODOS — campo persistente tipo mapa de red,
+     con conexiones dinámicas entre nodos cercanos
+  ========================================================= */
+  const NODE_COUNT = 170;
+  const nodePositions = new Float32Array(NODE_COUNT * 3);
+  const nodeVelocities = [];
+  for (let i = 0; i < NODE_COUNT; i++) {
+    const r = 16 + Math.random() * 14;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(Math.random() * 2 - 1);
+    nodePositions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+    nodePositions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta) * 0.55;
+    nodePositions[i * 3 + 2] = r * Math.cos(phi) + CORE_DEPTH;
+    nodeVelocities.push(new THREE.Vector3((Math.random() - 0.5) * 0.015, (Math.random() - 0.5) * 0.015, (Math.random() - 0.5) * 0.015));
+  }
+  const nodeGeometry = new THREE.BufferGeometry();
+  nodeGeometry.setAttribute('position', new THREE.BufferAttribute(nodePositions, 3));
+  const nodeMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 0.12, transparent: true, opacity: 0, sizeAttenuation: true });
+  const nodePoints = new THREE.Points(nodeGeometry, nodeMaterial);
+  scene.add(nodePoints);
+
+  const MAX_LINES = NODE_COUNT * 2;
+  const linePositions = new Float32Array(MAX_LINES * 2 * 3);
+  const lineGeometry = new THREE.BufferGeometry();
+  lineGeometry.setAttribute('position', new THREE.BufferAttribute(linePositions, 3).setUsage(THREE.DynamicDrawUsage));
+  lineGeometry.setDrawRange(0, 0);
+  const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 });
+  const networkLines = new THREE.LineSegments(lineGeometry, lineMaterial);
+  scene.add(networkLines);
+  let networkBaseOpacity = 0;
+
+  let networkFrameSkip = 0;
+  function updateNetwork() {
+    const pos = nodeGeometry.attributes.position.array;
+    const mouseWorldX = normMouseX * 22;
+    const mouseWorldY = normMouseY * 15;
+    for (let i = 0; i < NODE_COUNT; i++) {
+      const idx = i * 3;
+      pos[idx] += nodeVelocities[i].x;
+      pos[idx + 1] += nodeVelocities[i].y;
+      pos[idx + 2] += nodeVelocities[i].z;
+      if (Math.abs(pos[idx]) > 30) nodeVelocities[i].x *= -1;
+      if (Math.abs(pos[idx + 1]) > 18) nodeVelocities[i].y *= -1;
+      if (Math.abs(pos[idx + 2] - CORE_DEPTH) > 30) nodeVelocities[i].z *= -1;
+      const dx = pos[idx] - mouseWorldX;
+      const dy = pos[idx + 1] - mouseWorldY;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d < 6) {
+        const push = (6 - d) * 0.01;
+        pos[idx] += (dx / (d || 1)) * push;
+        pos[idx + 1] += (dy / (d || 1)) * push;
+      }
+    }
+    nodeGeometry.attributes.position.needsUpdate = true;
+
+    networkFrameSkip++;
+    if (networkFrameSkip % 2 !== 0) return;
+    let lineIdx = 0;
+    const threshold = 7;
+    for (let i = 0; i < NODE_COUNT && lineIdx < MAX_LINES; i++) {
+      let connections = 0;
+      for (let j = i + 1; j < NODE_COUNT && connections < 2 && lineIdx < MAX_LINES; j++) {
+        const dx = pos[i * 3] - pos[j * 3], dy = pos[i * 3 + 1] - pos[j * 3 + 1], dz = pos[i * 3 + 2] - pos[j * 3 + 2];
+        const d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 < threshold * threshold) {
+          const base = lineIdx * 6;
+          linePositions[base] = pos[i * 3]; linePositions[base + 1] = pos[i * 3 + 1]; linePositions[base + 2] = pos[i * 3 + 2];
+          linePositions[base + 3] = pos[j * 3]; linePositions[base + 4] = pos[j * 3 + 1]; linePositions[base + 5] = pos[j * 3 + 2];
+          lineIdx++; connections++;
+        }
+      }
+    }
+    lineGeometry.setDrawRange(0, lineIdx * 2);
+    lineGeometry.attributes.position.needsUpdate = true;
+  }
+
+  /* =========================================================
+     CÁMARA — recorre la MISMA escena por sección
+     (en vez de intercambiar objetos, la cámara se mueve)
+  ========================================================= */
+  const CAMERA_KEYFRAMES = [
+    { pos: new THREE.Vector3(0, 0, 30), look: new THREE.Vector3(0, 0, CORE_DEPTH) },
+    { pos: new THREE.Vector3(7, 1.5, 24), look: new THREE.Vector3(-7, 0, CORE_DEPTH) },
+    { pos: new THREE.Vector3(0, -4, 38), look: new THREE.Vector3(0, -9, CORE_DEPTH) },
+    { pos: new THREE.Vector3(-6, 3, 36), look: new THREE.Vector3(8, 9, CORE_DEPTH) },
+    { pos: new THREE.Vector3(7, 0, 24), look: new THREE.Vector3(-7, 0, CORE_DEPTH) }
+  ];
+  // el núcleo se atenúa en secciones con contenido denso (skills/projects)
+  // para que no compita visualmente con las barras/cards
+  const CORE_VISIBILITY = [1, 1, 0.2, 0.25, 1];
+
+  function sampleKeyframes(progress) {
+    const p = Math.max(0, Math.min(CAMERA_KEYFRAMES.length - 1, progress));
+    const i0 = Math.floor(p);
+    const i1 = Math.min(CAMERA_KEYFRAMES.length - 1, i0 + 1);
+    const t = p - i0;
+    return { i0, i1, t };
+  }
+
+  const camLookCurrent = CAMERA_KEYFRAMES[0].look.clone();
+
+  function updateCamera(progress) {
+    const { i0, i1, t } = sampleKeyframes(progress);
+    const k0 = CAMERA_KEYFRAMES[i0], k1 = CAMERA_KEYFRAMES[i1];
+    const targetPos = new THREE.Vector3().lerpVectors(k0.pos, k1.pos, t);
+    const targetLook = new THREE.Vector3().lerpVectors(k0.look, k1.look, t);
+    camera.position.lerp(targetPos, 0.06);
+    camLookCurrent.lerp(targetLook, 0.06);
+    camera.position.x += normMouseX * 0.6;
+    camera.position.y += normMouseY * 0.4;
+    camera.lookAt(camLookCurrent);
+  }
+
+  function updateCoreVisibility(progress) {
+    const { i0, i1, t } = sampleKeyframes(progress);
+    const v0 = CORE_VISIBILITY[i0], v1 = CORE_VISIBILITY[i1];
+    return v0 + (v1 - v0) * t;
+  }
+
+  /* =========================================================
+     PIVOT / ESTADO GLOBAL
+  ========================================================= */
+  let currentSectionIndex = -1;
+  const clock = new THREE.Clock();
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const elapsed = clock.getElapsedTime();
+
+    updateScrollFX();
+    updateCamera(scrollFX.progress);
+    updateNetwork();
+
+    const coreVisibility = updateCoreVisibility(scrollFX.progress);
+    coreUniforms.uTime.value = elapsed;
+    coreUniforms.uOpacity.value = coreIntroOpacity * coreVisibility;
+    shellMaterial.opacity = shellBaseOpacity * coreVisibility;
+    coreGroup.rotation.y = elapsed * 0.04;
+    coreGroup.rotation.x = Math.sin(elapsed * 0.15) * 0.05;
+    shell.rotation.y = -elapsed * 0.025;
+    updateCoreDetection();
+
+    const scanT = (elapsed % 3.2) / 3.2;
+    scanRing.scale.setScalar(1 + scanT * 1.5);
+    ringMaterial.opacity = scanRingBaseOpacity * (1 - scanT) * coreVisibility;
+
+    pointLight1.position.x = Math.sin(elapsed * 0.3) * 20;
+
+    renderer.render(scene, camera);
+  }
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  /* =========================================================
+     ENTRADA DEL NÚCLEO (fade-in con GSAP)
+  ========================================================= */
+  let coreIntroOpacity = 0;
+  let shellBaseOpacity = 0;
+  gsap.to({ v: 0 }, { v: 1, duration: 2, delay: 0.4, ease: 'power2.out', onUpdate: function () { coreIntroOpacity = this.targets()[0].v; } });
+  gsap.to({ v: 0 }, { v: 0.22, duration: 2, delay: 0.4, ease: 'power2.out', onUpdate: function () { shellBaseOpacity = this.targets()[0].v; } });
+  gsap.to({ v: 0 }, {
+    v: 1, duration: 2, delay: 0.4, ease: 'power2.out',
+    onUpdate: function () { scanRingBaseOpacity = this.targets()[0].v * 0.5; }
+  });
+  gsap.to(nodeMaterial, { opacity: 0.8, duration: 2.2, delay: 0.6, ease: 'power2.out' });
+  gsap.to({ v: 0 }, {
+    v: 1, duration: 2.2, delay: 0.6, ease: 'power2.out',
+    onUpdate: function () { networkBaseOpacity = this.targets()[0].v; lineMaterial.opacity = networkBaseOpacity * 0.12; }
+  });
+
+  /* =========================================================
+     PROJECT CARD HOVER
+  ========================================================= */
+  document.querySelectorAll('.project-card').forEach(card => {
+    card.addEventListener('mouseenter', () => {
+      gsap.to(card, { y: -8, boxShadow: '0 20px 60px rgba(255,255,255,0.08)', borderColor: '#3a3a3a', duration: 0.45, ease: 'power3.out' });
+    });
+    card.addEventListener('mouseleave', () => {
+      gsap.to(card, { y: 0, boxShadow: '0 0px 0px rgba(255,255,255,0)', borderColor: '#1e1e1e', duration: 0.45, ease: 'power3.out' });
+    });
+  });
+
+  /* =========================================================
+     SCROLL / SECTION NAVIGATION
+  ========================================================= */
+  const scrollContainer = document.getElementById('scroll-container');
+  const sections = Array.from(document.querySelectorAll('section'));
+  const navDotWraps = document.querySelectorAll('.nav-dot-wrap');
+  const sectionIndicatorCurrent = document.querySelector('#section-indicator .current');
+
+  navDotWraps.forEach(wrap => {
+    wrap.addEventListener('click', () => {
+      const idx = parseInt(wrap.dataset.index);
+      sections[idx].scrollIntoView({ behavior: 'smooth' });
+    });
+  });
+
+  const SECTION_COUNT = sections.length;
+  const revealTargets = [
+    { el: document.querySelector('.hero-content'), index: 0 },
+    { el: document.querySelector('.about-text'), index: 1 },
+    { el: document.getElementById('skills-inner'), index: 2 },
+    { el: document.getElementById('projects-inner'), index: 3 },
+    { el: document.querySelector('.contact-left'), index: 4 }
+  ];
+  const pageLoadTime = performance.now();
+  let lastScrollTopFX = scrollContainer.scrollTop;
+  const scrollFX = { progress: 0, velocity: 0, dist: [0, 0, 0, 0, 0], factor: [0, 0, 0, 0, 0] };
+
+  function updateScrollFX() {
+    const st = scrollContainer.scrollTop;
+    const rawDelta = st - lastScrollTopFX;
+    lastScrollTopFX = st;
+    scrollFX.velocity = scrollFX.velocity * 0.85 + rawDelta * 0.5;
+
+    const progress = st / window.innerHeight;
+    scrollFX.progress = progress;
+    for (let i = 0; i < SECTION_COUNT; i++) {
+      const dist = progress - i;
+      scrollFX.dist[i] = dist;
+      scrollFX.factor[i] = Math.max(0, 1 - Math.abs(dist) * 1.3);
+    }
+
+    const heroSettled = (performance.now() - pageLoadTime > 1700) || Math.abs(scrollFX.dist[0]) > 0.15;
+    revealTargets.forEach(({ el, index }) => {
+      if (!el) return;
+      if (index === 0 && !heroSettled) return;
+      const d = Math.max(-1.4, Math.min(1.4, scrollFX.dist[index]));
+      el.style.opacity = Math.max(0, 1 - Math.abs(d) * 1.25);
+      el.style.transform = `translateY(${-d * 55}px)`;
+    });
+
+    const nearest = Math.max(0, Math.min(SECTION_COUNT - 1, Math.round(progress)));
+    if (nearest !== currentSectionIndex) {
+      currentSectionIndex = nearest;
+      navDotWraps.forEach(wrap => {
+        wrap.classList.toggle('active', parseInt(wrap.dataset.index) === nearest);
+      });
+      sectionIndicatorCurrent.textContent = String(nearest + 1).padStart(2, '0');
+    }
+    const f = scrollFX.factor;
+    if (f[1] > 0.5) revealHeading(document.querySelector('#about h2'));
+    if (f[2] > 0.5) { triggerSkillBars(); revealHeading(document.querySelector('#skills h2')); }
+    if (f[3] > 0.5) revealHeading(document.querySelector('#projects h2'));
+    if (f[4] > 0.5) revealHeading(document.querySelector('#contact h2'));
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'PageDown') {
+      e.preventDefault();
+      const next = Math.min(currentSectionIndex + 1, sections.length - 1);
+      sections[next].scrollIntoView({ behavior: 'smooth' });
+    } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+      e.preventDefault();
+      const prev = Math.max(currentSectionIndex - 1, 0);
+      sections[prev].scrollIntoView({ behavior: 'smooth' });
+    }
+  });
+
+  /* =========================================================
+     SKILLS BAR ANIMATION
+  ========================================================= */
+  let skillsTriggered = false;
+  function triggerSkillBars() {
+    if (skillsTriggered) return;
+    skillsTriggered = true;
+    const fills = Array.from(document.querySelectorAll('.skill-item')).map(item => {
+      const fill = item.querySelector('.skill-bar-fill');
+      fill.dataset.pct = item.dataset.pct;
+      return fill;
+    });
+    gsap.to(fills, { width: (i, target) => target.dataset.pct + '%', duration: 1.1, ease: 'power3.out', stagger: 0.08 });
+  }
+
+  /* =========================================================
+     PROJECT MODAL
+  ========================================================= */
+  const modalOverlay = document.getElementById('modal-overlay');
+  const modalBox = document.getElementById('modal-box');
+  const modalIndex = document.getElementById('modal-index');
+  const modalTitle = document.getElementById('modal-title');
+  const modalStack = document.getElementById('modal-stack');
+  const modalDesc = document.getElementById('modal-desc');
+  const modalClose = document.getElementById('modal-close');
+  const modalLinks = document.getElementById('modal-links');
+
+  function openModal(i) {
+    const p = PROJECTS[i];
+    modalIndex.textContent = String(i + 1).padStart(2, '0');
+    modalTitle.textContent = p.title;
+    modalStack.textContent = p.stack;
+    modalDesc.textContent = p.desc;
+    modalLinks.innerHTML = '';
+    if (p.repo) modalLinks.innerHTML += `<a href="${p.repo}" target="_blank" rel="noopener">↗ Ver código</a>`;
+    if (p.demo) modalLinks.innerHTML += `<a href="${p.demo}" target="_blank" rel="noopener">↗ Ver demo</a>`;
+    modalLinks.querySelectorAll('a').forEach(a => {
+      a.addEventListener('mouseenter', () => cursorRing.classList.add('hover'));
+      a.addEventListener('mouseleave', () => cursorRing.classList.remove('hover'));
+    });
+    modalOverlay.classList.add('open');
+    gsap.fromTo(modalBox, { opacity: 0, y: 30, scale: 0.95 }, { opacity: 1, y: 0, scale: 1, duration: 0.5, ease: 'power3.out' });
+  }
+  function closeModal() {
+    gsap.to(modalBox, { opacity: 0, y: 20, scale: 0.96, duration: 0.3, ease: 'power2.in', onComplete: () => modalOverlay.classList.remove('open') });
+  }
+
+  document.querySelectorAll('.project-card').forEach(card => {
+    card.addEventListener('click', () => openModal(parseInt(card.dataset.project)));
+  });
+  modalClose.addEventListener('click', closeModal);
+  modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+
+  /* =========================================================
+     CONTACT FORM
+  ========================================================= */
+  const contactForm = document.getElementById('contact-form');
+  const formMsg = document.getElementById('form-msg');
+  contactForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    formMsg.textContent = '> Mensaje enviado. Gracias por escribir.';
+    contactForm.reset();
+    setTimeout(() => { formMsg.textContent = ''; }, 4000);
+  });
+
+  /* =========================================================
+     START RENDER LOOP
+  ========================================================= */
+  animate();
+  </script>
+</body>
+</html>
