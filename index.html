@@ -514,6 +514,91 @@
     .skills-grid { grid-template-columns: 1fr; }
     .projects-grid { grid-template-columns: 1fr; }
   }
+
+  /* ===== MÓVIL / PANTALLAS ESTRECHAS =====
+     El layout base usa posiciones absolutas pensadas para
+     escritorio (esquinas del hero, columnas partidas). Aquí se
+     reordena todo a una sola columna que cabe en la pantalla,
+     manteniendo cada <section> en 100vh (el motor de scroll/cámara
+     depende de esa altura fija) pero permitiendo que el texto
+     haga scroll interno si no cabe. */
+  @media (max-width: 860px) {
+    #cursor-dot, #cursor-ring { display: none; }
+    html, body { cursor: auto; }
+    a, button, .project-card, .nav-dot-wrap, input, textarea, #modal-close { cursor: pointer; }
+
+    section { padding: 0 24px; }
+
+    /* HERO: de esquinas a columna centrada */
+    .hero-content {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      height: 100%;
+      padding-top: 70px;
+      gap: 18px;
+    }
+    .hero-role {
+      position: static;
+      max-width: none;
+      font-size: 11px;
+    }
+    #hero h1 {
+      position: static;
+      font-size: clamp(38px, 13vw, 64px);
+    }
+    .hero-stack {
+      position: static;
+      align-items: flex-start;
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+    }
+    .hero-stack-label { width: 100%; margin-bottom: 0; }
+
+    /* ABOUT / CONTACT: columna única, con scroll interno si el texto no cabe */
+    #about, #contact {
+      flex-direction: column;
+      justify-content: flex-start;
+      align-items: stretch;
+      padding-top: 130px;
+      padding-bottom: 24px;
+      gap: 0;
+    }
+    .about-text, .contact-left {
+      max-width: 100%;
+      max-height: calc(100vh - 160px);
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .about-visual, .contact-right { display: none; }
+    .about-heading-row { margin-bottom: 20px; }
+    .about-text h2, #skills h2, #projects h2, .contact-left h2 { font-size: clamp(28px, 8vw, 40px); }
+    .about-text p { font-size: 15px; }
+
+    /* SKILLS / PROJECTS: bajar el padding superior, mismo criterio */
+    #skills, #projects { padding-top: 130px; justify-content: flex-start; }
+    #skills-inner, #projects-inner {
+      max-height: calc(100vh - 160px);
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    #skills h2, #projects h2 { margin-bottom: 20px; }
+
+    /* PROJECTS: comprimir las cards para que las 4 quepan sin scroll interno */
+    .projects-grid { gap: 10px; }
+    .project-card { padding: 14px; }
+    .project-card h3 { font-size: 17px; margin: 8px 0 6px; }
+    .project-stack { font-size: 10px; margin-bottom: 8px; }
+    .project-desc { font-size: 12.5px; line-height: 1.45; }
+
+    /* MODAL */
+    #modal-box { padding: 30px; max-height: 80vh; overflow-y: auto; }
+    #modal-box h3 { font-size: 24px; }
+
+    /* NAV: puntos más grandes para el dedo */
+    .nav-dot-wrap { padding: 4px; }
+  }
 </style>
 </head>
 <body>
